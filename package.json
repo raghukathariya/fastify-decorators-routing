@@ -1,6 +1,6 @@
 {
   "name": "fastify-decorators-routing",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A decorator-based routing framework for Fastify v5+, built for minimal overhead and maximum performance.",
   "keywords": [
     "fastify",

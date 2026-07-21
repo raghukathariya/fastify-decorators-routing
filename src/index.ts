@@ -1,10 +1,7 @@
 /**
  * fastify-decorators-routing
  *
- * A decorator-based routing framework for Fastify v5+.
- *
- * The public API surface is built up incrementally: this entry point re-exports each subsystem
- * as it is implemented. See the project roadmap in README.md for what has landed so far.
+ * A decorator-based routing framework for Fastify v5+. See README.md for the full feature list.
  */
 
 export * from './errors/index.js';
@@ -33,4 +30,4 @@ export * from './testing/index.js';
  * The semantic version of the `fastify-decorators-routing` package, kept in sync with
  * `package.json` by the release process.
  */
-export const VERSION = '0.1.0';
+export const VERSION = '1.0.0';

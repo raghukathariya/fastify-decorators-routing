@@ -7,7 +7,7 @@
 A decorator-based routing framework for [Fastify](https://fastify.dev) v5+, designed specifically for Fastify with minimal overhead and
 maximum performance.
 
-> **Status:** Under active, phased development. See [Roadmap](#roadmap) below.
+> **Status:** 1.0.0 — feature-complete per the [Roadmap](#roadmap) below.
 
 ## Why
 
