@@ -16,6 +16,7 @@ import {
   getControllerInterceptors,
   getRouteInterceptors,
 } from '../interceptors/use-interceptor.decorator.js';
+import type { InterceptorLike } from '../interceptors/interceptor.types.js';
 import type { ExecutionContext } from '../interfaces/execution-context.js';
 import { globalMetadataRegistry } from '../metadata/metadata-registry.js';
 import { serializeResponse } from '../serialization/serialize-response.js';
@@ -77,9 +78,10 @@ export function buildRouteHandler(
     ...getControllerGuards(controller),
     ...getRouteGuards(prototype, route.handlerName),
   ];
-  const hasInterceptors =
-    getControllerInterceptors(controller).length > 0 ||
-    getRouteInterceptors(prototype, route.handlerName).length > 0;
+  const interceptors: readonly InterceptorLike[] = [
+    ...getControllerInterceptors(controller),
+    ...getRouteInterceptors(prototype, route.handlerName),
+  ];
   const filters: readonly ExceptionFilterLike[] = [
     ...getRouteFilters(prototype, route.handlerName),
     ...getControllerFilters(controller),
@@ -121,16 +123,10 @@ export function buildRouteHandler(
       const invokeHandler = (): unknown =>
         (handlerMethod as (...args: unknown[]) => unknown).apply(instance, args);
 
-      const result = hasInterceptors
-        ? await composeInterceptors(
-            controller,
-            prototype,
-            route.handlerName,
-            context,
-            container,
-            invokeHandler,
-          )()
-        : await invokeHandler();
+      const result =
+        interceptors.length > 0
+          ? await composeInterceptors(interceptors, context, container, invokeHandler)()
+          : await invokeHandler();
 
       return serializationConfig ? serializeResponse(result, serializationConfig) : result;
     } catch (exception) {

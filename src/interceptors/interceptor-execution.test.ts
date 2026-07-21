@@ -6,7 +6,6 @@ import { Injectable } from '../container/injectable.decorator.js';
 import type { ExecutionContext } from '../interfaces/execution-context.js';
 import { composeInterceptors } from './interceptor-execution.js';
 import type { Interceptor, InterceptorLike, NextFn } from './interceptor.types.js';
-import { UseInterceptor } from './use-interceptor.decorator.js';
 
 function fakeContext(): ExecutionContext {
   return {
@@ -18,22 +17,9 @@ function fakeContext(): ExecutionContext {
 }
 
 describe('composeInterceptors: no interceptors', () => {
-  it('calls straight through to the final handler when neither controller nor route has any', () => {
-    class Controller {
-      public handle(): void {
-        // intentionally empty
-      }
-    }
-
+  it('calls straight through to the final handler when the list is empty', () => {
     const finalNext = () => 'handler-result';
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      finalNext,
-    );
+    const chain = composeInterceptors([], fakeContext(), new Container(), finalNext);
 
     expect(chain()).toBe('handler-result');
   });
@@ -49,25 +35,11 @@ describe('composeInterceptors: single interceptor', () => {
       return result;
     };
 
-    @UseInterceptor(interceptor)
-    class Controller {
-      public handle(): string {
-        calls.push('handler');
-        return 'ok';
-      }
-    }
-
     const finalNext = () => {
-      return new Controller().handle();
+      calls.push('handler');
+      return 'ok';
     };
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      finalNext,
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), finalNext);
 
     const result = await chain();
     expect(result).toBe('ok');
@@ -80,21 +52,7 @@ describe('composeInterceptors: single interceptor', () => {
       return { wrapped: result };
     };
 
-    @UseInterceptor(interceptor)
-    class Controller {
-      public handle(): string {
-        return 'raw';
-      }
-    }
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => 'raw',
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), () => 'raw');
 
     expect(await chain()).toEqual({ wrapped: 'raw' });
   });
@@ -103,20 +61,10 @@ describe('composeInterceptors: single interceptor', () => {
     const nextSpy = { called: false };
     const interceptor: InterceptorLike = () => 'cached-value';
 
-    @UseInterceptor(interceptor)
-    class Controller {}
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => {
-        nextSpy.called = true;
-        return 'fresh-value';
-      },
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), () => {
+      nextSpy.called = true;
+      return 'fresh-value';
+    });
 
     expect(await chain()).toBe('cached-value');
     expect(nextSpy.called).toBe(false);
@@ -131,19 +79,9 @@ describe('composeInterceptors: single interceptor', () => {
       }
     };
 
-    @UseInterceptor(interceptor)
-    class Controller {}
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => {
-        throw new Error('boom');
-      },
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), () => {
+      throw new Error('boom');
+    });
 
     expect(await chain()).toBe('recovered');
   });
@@ -154,19 +92,9 @@ describe('composeInterceptors: single interceptor', () => {
     // route with no async interceptors pays nothing for promise wrapping it doesn't need.
     const interceptor: InterceptorLike = (_context, next) => next();
 
-    @UseInterceptor(interceptor)
-    class Controller {}
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => {
-        throw new Error('boom');
-      },
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), () => {
+      throw new Error('boom');
+    });
 
     expect(() => chain()).toThrow('boom');
   });
@@ -177,64 +105,41 @@ describe('composeInterceptors: single interceptor', () => {
     // eslint-disable-next-line @typescript-eslint/require-await
     const interceptor: InterceptorLike = async (_context, next) => next();
 
-    @UseInterceptor(interceptor)
-    class Controller {}
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => {
-        throw new Error('boom');
-      },
-    );
+    const chain = composeInterceptors([interceptor], fakeContext(), new Container(), () => {
+      throw new Error('boom');
+    });
 
     await expect(chain()).rejects.toThrow('boom');
   });
 });
 
 describe('composeInterceptors: multiple interceptors', () => {
-  it('runs controller-level interceptors outside route-level ones', async () => {
+  it('runs the first entry outermost and the last entry innermost, in list order', async () => {
     const calls: string[] = [];
-    const controllerInterceptor: InterceptorLike = async (_c, next) => {
-      calls.push('controller-before');
+    const outer: InterceptorLike = async (_c, next) => {
+      calls.push('outer-before');
       const result = await next();
-      calls.push('controller-after');
+      calls.push('outer-after');
       return result;
     };
-    const routeInterceptor: InterceptorLike = async (_c, next) => {
-      calls.push('route-before');
+    const inner: InterceptorLike = async (_c, next) => {
+      calls.push('inner-before');
       const result = await next();
-      calls.push('route-after');
+      calls.push('inner-after');
       return result;
     };
 
-    @UseInterceptor(controllerInterceptor)
-    class Controller {
-      @UseInterceptor(routeInterceptor)
-      public handle(): void {
-        calls.push('handler');
-      }
-    }
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => calls.push('handler'),
+    const chain = composeInterceptors([outer, inner], fakeContext(), new Container(), () =>
+      calls.push('handler'),
     );
 
     await chain();
     expect(calls).toEqual([
-      'controller-before',
-      'route-before',
+      'outer-before',
+      'inner-before',
       'handler',
-      'route-after',
-      'controller-after',
+      'inner-after',
+      'outer-after',
     ]);
   });
 });
@@ -248,20 +153,10 @@ describe('composeInterceptors: class and instance interceptors', () => {
       }
     }
 
-    @UseInterceptor(MyInterceptor)
-    class Controller {}
-
     const container = new Container();
     expect(container.has(MyInterceptor)).toBe(false);
 
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      container,
-      () => 'ok',
-    );
+    const chain = composeInterceptors([MyInterceptor], fakeContext(), container, () => 'ok');
 
     expect(await chain()).toBe('ok');
     expect(container.has(MyInterceptor)).toBe(true);
@@ -285,20 +180,10 @@ describe('composeInterceptors: class and instance interceptors', () => {
       }
     }
 
-    @UseInterceptor(MetricsInterceptor)
-    class Controller {}
-
     const container = new Container();
     container.registerClass(MetricsService);
 
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      container,
-      () => 'ok',
-    );
+    const chain = composeInterceptors([MetricsInterceptor], fakeContext(), container, () => 'ok');
     await chain();
 
     expect(container.resolve(MetricsService).recorded).toBe(true);
@@ -309,17 +194,7 @@ describe('composeInterceptors: class and instance interceptors', () => {
       intercept: (_context, next) => next(),
     };
 
-    @UseInterceptor(instance)
-    class Controller {}
-
-    const chain = composeInterceptors(
-      Controller,
-      Controller.prototype,
-      'handle',
-      fakeContext(),
-      new Container(),
-      () => 'ok',
-    );
+    const chain = composeInterceptors([instance], fakeContext(), new Container(), () => 'ok');
 
     expect(await chain()).toBe('ok');
   });

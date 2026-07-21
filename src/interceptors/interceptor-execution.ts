@@ -1,6 +1,5 @@
 import type { Container } from '../container/container.js';
 import type { ExecutionContext } from '../interfaces/execution-context.js';
-import type { AnyConstructor, MemberKey } from '../types/constructor.type.js';
 
 import type {
   Interceptor,
@@ -8,7 +7,6 @@ import type {
   InterceptorLike,
   NextFn,
 } from './interceptor.types.js';
-import { getControllerInterceptors, getRouteInterceptors } from './use-interceptor.decorator.js';
 
 function isInterceptorClass(interceptor: InterceptorLike): interceptor is InterceptorClass {
   return (
@@ -48,26 +46,26 @@ function executeInterceptor(
 }
 
 /**
- * Builds the full interceptor chain — every controller-level interceptor (outermost, so it sees
- * the raw call and the final result) wrapping every route-level interceptor (innermost, closest
- * to the handler) — and returns a single `NextFn` that runs it. Calling the returned function
- * runs interceptor 1, which calls `next` (interceptor 2, ... ), until the last interceptor calls
- * `finalNext` — the actual route handler invocation.
+ * Builds the full interceptor chain from an already-resolved `interceptors` list — every
+ * controller-level interceptor (outermost, so it sees the raw call and the final result)
+ * wrapping every route-level interceptor (innermost, closest to the handler) — and returns a
+ * single `NextFn` that runs it. Calling the returned function runs interceptor 1, which calls
+ * `next` (interceptor 2, ... ), until the last interceptor calls `finalNext` — the actual route
+ * handler invocation.
+ *
+ * Takes the resolved list rather than `controller`/`prototype`/`handlerName` (and reading
+ * `getControllerInterceptors`/`getRouteInterceptors` itself) deliberately: this runs once per
+ * *request*, while the interceptor list itself only ever changes at route-registration time —
+ * `buildRouteHandler` resolves it exactly once and this just re-threads it through a fresh
+ * `context`/`finalNext` each call, rather than re-reading the metadata registry on every request.
  */
 export function composeInterceptors(
-  controller: AnyConstructor,
-  prototype: object,
-  handlerName: MemberKey,
+  interceptors: readonly InterceptorLike[],
   context: ExecutionContext,
   container: Container,
   finalNext: NextFn,
 ): NextFn {
-  const chain = [
-    ...getControllerInterceptors(controller),
-    ...getRouteInterceptors(prototype, handlerName),
-  ];
-
-  return chain.reduceRight<NextFn>(
+  return interceptors.reduceRight<NextFn>(
     (next, interceptor) => () => executeInterceptor(interceptor, context, container, next),
     finalNext,
   );

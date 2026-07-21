@@ -14,7 +14,9 @@ export type ParamExtractorType =
   | 'cookies'
   | 'ip'
   | 'hostname'
-  | 'session';
+  | 'session'
+  | 'file'
+  | 'files';
 
 /** Context handed to a parameter's `transform` function alongside the raw extracted value. */
 export interface ParamExtractionContext {

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AnyConstructor } from '../types/constructor.type.js';
 import { validateAndTransform } from '../validation/validation-pipe.js';
+import type { UploadedFile } from './multipart-file.type.js';
 import type { ParamDefinition, ParamExtractorType } from './param.types.js';
 
 function pluckKey(source: unknown, key: string | undefined): unknown {
@@ -42,6 +43,39 @@ function extractRawValue(
     case 'res':
       return reply;
   }
+}
+
+/**
+ * Reads every uploaded file off `request.files()` — `@fastify/multipart`'s own async-iterable
+ * stream API — filtering to `fieldName` when given. Resolves to `[]` (not an error) when
+ * `@fastify/multipart` isn't registered at all, the same graceful degradation
+ * `readOptionalRequestProperty` gives `@Cookies`/`@Session`; `request.files` simply doesn't exist
+ * on the request in that case.
+ *
+ * Buffers every file it sees (`await file.toBuffer()`), matching field or not, before continuing
+ * to the next one — `@fastify/multipart`'s own docs show consuming each part's stream inside the
+ * iteration loop for exactly this reason: asking the iterator for the next part before the
+ * current one's stream is drained deadlocks waiting for backpressure that never clears. This is
+ * safe for a caller's own `file.toBuffer()` call afterward too — `@fastify/multipart` caches the
+ * buffer on the file object, so that second call returns instantly rather than reading twice.
+ */
+async function extractMultipartFiles(
+  request: FastifyRequest,
+  fieldName: string | undefined,
+): Promise<readonly UploadedFile[]> {
+  const filesFn = readOptionalRequestProperty(request, 'files');
+  if (typeof filesFn !== 'function') return [];
+
+  const iterator = (filesFn as () => AsyncIterable<UploadedFile>).call(request);
+
+  const results: UploadedFile[] = [];
+  for await (const file of iterator) {
+    await file.toBuffer();
+    if (fieldName === undefined || file.fieldname === fieldName) {
+      results.push(file);
+    }
+  }
+  return results;
 }
 
 /**
@@ -87,13 +121,15 @@ const VALIDATABLE_TYPES: ReadonlySet<ParamExtractorType> = new Set([
 ]);
 
 /**
- * Resolves the value to inject for one `@Body`/`@Query`/.../`@Session` parameter:
- *  1. Extracts the raw value from `request`/`reply`.
- *  2. Coerces it toward `designType` when unambiguous (`coerceToDesignType`).
- *  3. If `designType` is a plausible DTO class and the parameter didn't opt out
+ * Resolves the value to inject for one `@Body`/`@Query`/.../`@UploadedFile` parameter:
+ *  1. `@UploadedFile`/`@UploadedFiles` take their own path entirely — `extractMultipartFiles`,
+ *     skipping steps 2-3 below (there is nothing to coerce or validate on a file).
+ *  2. Every other type extracts its raw value from `request`/`reply`.
+ *  3. Coerces it toward `designType` when unambiguous (`coerceToDesignType`).
+ *  4. If `designType` is a plausible DTO class and the parameter didn't opt out
  *     (`{ validate: false }`), transforms and validates it via `class-transformer`/
  *     `class-validator` (`validateAndTransform`) — throwing `ValidationException` on failure.
- *  4. Applies the parameter's own `transform` (if any), which always sees the fully
+ *  5. Applies the parameter's own `transform` (if any), which always sees the fully
  *     validated/transformed value, not the raw one.
  */
 export async function extractParamValue(
@@ -102,11 +138,21 @@ export async function extractParamValue(
   reply: FastifyReply,
   designType?: AnyConstructor,
 ): Promise<unknown> {
-  const raw = extractRawValue(definition, request, reply);
-  let value = coerceToDesignType(raw, designType);
+  let value: unknown;
 
-  if (definition.validate !== false && VALIDATABLE_TYPES.has(definition.type)) {
-    value = await validateAndTransform(designType, value);
+  if (definition.type === 'file' || definition.type === 'files') {
+    // Multipart files come from an async stream API, not a plain object `pluckKey` can read a
+    // key off — and they're never a validation/coercion target, so this bypasses
+    // `extractRawValue`/`coerceToDesignType`/`validateAndTransform` entirely.
+    const files = await extractMultipartFiles(request, definition.key);
+    value = definition.type === 'file' ? files[0] : files;
+  } else {
+    const raw = extractRawValue(definition, request, reply);
+    value = coerceToDesignType(raw, designType);
+
+    if (definition.validate !== false && VALIDATABLE_TYPES.has(definition.type)) {
+      value = await validateAndTransform(designType, value);
+    }
   }
 
   if (definition.transform) {

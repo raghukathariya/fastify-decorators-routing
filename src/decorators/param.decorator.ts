@@ -127,6 +127,20 @@ export const Cookies = createKeyedParamDecorator('cookies', 'Cookies');
  */
 export const Session = createKeyedParamDecorator('session', 'Session');
 
+/**
+ * Injects the first uploaded file (optionally filtered to one field name, `@UploadedFile('avatar')`),
+ * or `undefined` if none matches. Requires `@fastify/multipart` to be registered — without it,
+ * this always injects `undefined`, the same graceful degradation `@Cookies`/`@Session` have for
+ * their own required plugins.
+ */
+export const UploadedFile = createKeyedParamDecorator('file', 'UploadedFile');
+/**
+ * Injects every uploaded file (optionally filtered to one field name,
+ * `@UploadedFiles('attachments')`) as an array — empty if none matches or `@fastify/multipart`
+ * isn't registered.
+ */
+export const UploadedFiles = createKeyedParamDecorator('files', 'UploadedFiles');
+
 /** Injects the full Fastify `FastifyRequest` object. */
 export const Req = createSimpleParamDecorator('req', 'Req');
 /** Injects the full Fastify `FastifyReply` object. */

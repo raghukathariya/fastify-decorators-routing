@@ -47,6 +47,8 @@ import { ApiResponse } from '../swagger/api-response.decorator.js';
 import { ApiSecurity } from '../swagger/api-security.decorator.js';
 import { ApiTags } from '../swagger/api-tags.decorator.js';
 import { Version } from '../decorators/version.decorator.js';
+import { UploadedFile, UploadedFiles } from '../decorators/param.decorator.js';
+import type { UploadedFile as UploadedFileType } from '../decorators/multipart-file.type.js';
 import { clearGlobCache } from '../scanner/glob-resolver.js';
 import { clearImportCache } from '../scanner/module-importer.js';
 import { registerControllers } from './register-controllers.js';
@@ -1724,5 +1726,138 @@ describe('registerControllers: versioning', () => {
         { prefix: '/two' },
       ),
     ).resolves.not.toThrow();
+  });
+});
+
+describe('registerControllers: multipart uploads', () => {
+  const boundary = '----registerControllersTestBoundary';
+
+  interface MultipartPart {
+    name: string;
+    filename?: string;
+    contentType?: string;
+    value: string;
+  }
+
+  function buildMultipartBody(parts: readonly MultipartPart[]): string {
+    const segments = parts.map((part) => {
+      const disposition =
+        part.filename !== undefined
+          ? `Content-Disposition: form-data; name="${part.name}"; filename="${part.filename}"`
+          : `Content-Disposition: form-data; name="${part.name}"`;
+      const contentType =
+        part.contentType !== undefined ? `\r\nContent-Type: ${part.contentType}` : '';
+      return `--${boundary}\r\n${disposition}${contentType}\r\n\r\n${part.value}\r\n`;
+    });
+    return `${segments.join('')}--${boundary}--\r\n`;
+  }
+
+  function multipartHeaders(): Record<string, string> {
+    return { 'content-type': `multipart/form-data; boundary=${boundary}` };
+  }
+
+  it('@UploadedFile injects a single uploaded file, readable via toBuffer', async () => {
+    const fastifyMultipart = (await import('@fastify/multipart')).default;
+
+    @Controller('/upload')
+    class UploadController {
+      @Post('/')
+      public async handle(@UploadedFile() file: UploadedFileType | undefined): Promise<object> {
+        const content = file ? (await file.toBuffer()).toString('utf8') : null;
+        return { filename: file?.filename, mimetype: file?.mimetype, content };
+      }
+    }
+
+    const app = Fastify();
+    await app.register(fastifyMultipart);
+    await app.register(registerControllers, { controllers: [UploadController] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/upload',
+      headers: multipartHeaders(),
+      payload: buildMultipartBody([
+        { name: 'avatar', filename: 'avatar.txt', contentType: 'text/plain', value: 'hello' },
+      ]),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      filename: 'avatar.txt',
+      mimetype: 'text/plain',
+      content: 'hello',
+    });
+  });
+
+  it('@UploadedFile(fieldName) selects only the matching field among several files', async () => {
+    const fastifyMultipart = (await import('@fastify/multipart')).default;
+
+    @Controller('/upload')
+    class UploadController {
+      @Post('/')
+      public handle(@UploadedFile('banner') file: UploadedFileType | undefined): object {
+        return { filename: file?.filename };
+      }
+    }
+
+    const app = Fastify();
+    await app.register(fastifyMultipart);
+    await app.register(registerControllers, { controllers: [UploadController] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/upload',
+      headers: multipartHeaders(),
+      payload: buildMultipartBody([
+        { name: 'avatar', filename: 'avatar.txt', contentType: 'text/plain', value: 'a' },
+        { name: 'banner', filename: 'banner.txt', contentType: 'text/plain', value: 'b' },
+      ]),
+    });
+
+    expect(response.json()).toEqual({ filename: 'banner.txt' });
+  });
+
+  it('@UploadedFiles injects every uploaded file as an array', async () => {
+    const fastifyMultipart = (await import('@fastify/multipart')).default;
+
+    @Controller('/upload')
+    class UploadController {
+      @Post('/')
+      public handle(@UploadedFiles() files: readonly UploadedFileType[]): object {
+        return { filenames: files.map((file) => file.filename) };
+      }
+    }
+
+    const app = Fastify();
+    await app.register(fastifyMultipart);
+    await app.register(registerControllers, { controllers: [UploadController] });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/upload',
+      headers: multipartHeaders(),
+      payload: buildMultipartBody([
+        { name: 'files', filename: 'one.txt', contentType: 'text/plain', value: '1' },
+        { name: 'files', filename: 'two.txt', contentType: 'text/plain', value: '2' },
+      ]),
+    });
+
+    expect(response.json()).toEqual({ filenames: ['one.txt', 'two.txt'] });
+  });
+
+  it('@UploadedFile resolves to undefined for a normal JSON request with no @fastify/multipart registered', async () => {
+    @Controller('/upload')
+    class UploadController {
+      @Post('/')
+      public handle(@UploadedFile() file: UploadedFileType | undefined): object {
+        return { hasFile: file !== undefined };
+      }
+    }
+
+    const app = Fastify();
+    await app.register(registerControllers, { controllers: [UploadController] });
+
+    const response = await app.inject({ method: 'POST', url: '/upload', payload: {} });
+    expect(response.json()).toEqual({ hasFile: false });
   });
 });

@@ -27,6 +27,7 @@ export * from './hooks/index.js';
 export * from './router/index.js';
 export * from './swagger/index.js';
 export * from './versioning/index.js';
+export * from './testing/index.js';
 
 /**
  * The semantic version of the `fastify-decorators-routing` package, kept in sync with

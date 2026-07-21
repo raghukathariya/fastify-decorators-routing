@@ -49,6 +49,8 @@ export {
   Req,
   Res,
   Session,
+  UploadedFile,
+  UploadedFiles,
   getParamDefinitions,
   PARAM_DEFINITIONS_METADATA_KEY,
 } from './param.decorator.js';
@@ -60,4 +62,5 @@ export type {
   ParamOptions,
   ParamTransform,
 } from './param.types.js';
+export type { UploadedFile as UploadedFileType } from './multipart-file.type.js';
 export { coerceToDesignType, extractParamValue } from './param-extraction.js';

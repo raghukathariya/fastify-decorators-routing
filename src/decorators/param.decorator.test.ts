@@ -12,10 +12,12 @@ import {
   Req,
   Res,
   Session,
+  UploadedFile,
+  UploadedFiles,
   getParamDefinitions,
 } from './param.decorator.js';
 
-describe('keyed parameter decorators: @Body, @Query, @Param, @Headers, @Cookies, @Session', () => {
+describe('keyed parameter decorators: @Body, @Query, @Param, @Headers, @Cookies, @Session, @UploadedFile, @UploadedFiles', () => {
   const cases: [string, typeof Body, string][] = [
     ['@Body', Body, 'body'],
     ['@Query', Query, 'query'],
@@ -23,6 +25,8 @@ describe('keyed parameter decorators: @Body, @Query, @Param, @Headers, @Cookies,
     ['@Headers', Headers, 'headers'],
     ['@Cookies', Cookies, 'cookies'],
     ['@Session', Session, 'session'],
+    ['@UploadedFile', UploadedFile, 'file'],
+    ['@UploadedFiles', UploadedFiles, 'files'],
   ];
 
   it.each(cases)('%s with no argument extracts the whole object', (_label, decorator) => {

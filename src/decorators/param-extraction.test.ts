@@ -162,3 +162,109 @@ describe('extractParamValue: transform hook', () => {
     expect(context).toEqual({ type: 'req' });
   });
 });
+
+describe('extractParamValue: @UploadedFile / @UploadedFiles', () => {
+  function fakeMultipartFile(fieldname: string, filename: string): Record<string, unknown> {
+    return {
+      fieldname,
+      filename,
+      encoding: '7bit',
+      mimetype: 'text/plain',
+      toBuffer: () => Promise.resolve(Buffer.from('')),
+    };
+  }
+
+  function requestWithFiles(files: readonly Record<string, unknown>[]): FastifyRequest {
+    return fakeRequest({
+      files: () => ({
+        *[Symbol.asyncIterator]() {
+          for (const file of files) yield file;
+        },
+      }),
+    });
+  }
+
+  it('@UploadedFile resolves to the first file when no field name filter is given', async () => {
+    const files = [fakeMultipartFile('avatar', 'a.png'), fakeMultipartFile('banner', 'b.png')];
+    const result = await extractParamValue(
+      { index: 0, type: 'file' },
+      requestWithFiles(files),
+      fakeReply,
+    );
+    expect(result).toBe(files[0]);
+  });
+
+  it('@UploadedFile(fieldName) resolves to the first file matching that field', async () => {
+    const files = [fakeMultipartFile('avatar', 'a.png'), fakeMultipartFile('banner', 'b.png')];
+    const result = await extractParamValue(
+      { index: 0, type: 'file', key: 'banner' },
+      requestWithFiles(files),
+      fakeReply,
+    );
+    expect(result).toBe(files[1]);
+  });
+
+  it('@UploadedFile resolves to undefined when no file matches', async () => {
+    const result = await extractParamValue(
+      { index: 0, type: 'file', key: 'missing' },
+      requestWithFiles([fakeMultipartFile('avatar', 'a.png')]),
+      fakeReply,
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it('@UploadedFiles resolves to every file when no field name filter is given', async () => {
+    const files = [fakeMultipartFile('a', '1.png'), fakeMultipartFile('a', '2.png')];
+    const result = await extractParamValue(
+      { index: 0, type: 'files' },
+      requestWithFiles(files),
+      fakeReply,
+    );
+    expect(result).toEqual(files);
+  });
+
+  it('@UploadedFiles(fieldName) resolves to every file matching that field only', async () => {
+    const files = [
+      fakeMultipartFile('attachments', '1.png'),
+      fakeMultipartFile('avatar', 'a.png'),
+      fakeMultipartFile('attachments', '2.png'),
+    ];
+    const result = await extractParamValue(
+      { index: 0, type: 'files', key: 'attachments' },
+      requestWithFiles(files),
+      fakeReply,
+    );
+    expect(result).toEqual([files[0], files[2]]);
+  });
+
+  it('@UploadedFiles resolves to an empty array when nothing matches', async () => {
+    const result = await extractParamValue(
+      { index: 0, type: 'files', key: 'missing' },
+      requestWithFiles([fakeMultipartFile('avatar', 'a.png')]),
+      fakeReply,
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('@UploadedFile resolves to undefined when @fastify/multipart is not registered', async () => {
+    const result = await extractParamValue({ index: 0, type: 'file' }, fakeRequest(), fakeReply);
+    expect(result).toBeUndefined();
+  });
+
+  it('@UploadedFiles resolves to an empty array when @fastify/multipart is not registered', async () => {
+    const result = await extractParamValue({ index: 0, type: 'files' }, fakeRequest(), fakeReply);
+    expect(result).toEqual([]);
+  });
+
+  it('never runs DTO validation against a file value even with a class designType', async () => {
+    class SomeDto {}
+    const files = [fakeMultipartFile('avatar', 'a.png')];
+    const result = await extractParamValue(
+      { index: 0, type: 'file' },
+      requestWithFiles(files),
+      fakeReply,
+      SomeDto,
+    );
+    expect(result).toBe(files[0]);
+  });
+});
