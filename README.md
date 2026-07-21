@@ -456,7 +456,7 @@ is tested, and leaves the project in a working state.
 | 24    | Examples                       | ✅ Complete |
 | 25    | Documentation                  | ✅ Complete |
 | 26    | Testing                        | ✅ Complete |
-| 27    | Release                        | ⏳ Planned  |
+| 27    | Release                        | ✅ Complete |
 
 ## Development
 
