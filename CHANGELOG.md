@@ -1,5 +1,12 @@
 # fastify-decorators-routing
 
+## 1.0.1
+
+### Patch Changes
+
+- Resolve `npm audit` vulnerabilities in development tooling (vitest 5, tsup 9, patched transitive
+  dependencies). No changes to the published runtime code.
+
 ## 1.0.0
 
 ### Major Changes
