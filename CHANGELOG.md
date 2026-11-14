@@ -1,5 +1,11 @@
 # fastify-decorators-routing
 
+## 1.0.2
+
+### Patch Changes
+
+- Fix npm token authentication in GitHub Actions release workflow.
+
 ## 1.0.1
 
 ### Patch Changes
